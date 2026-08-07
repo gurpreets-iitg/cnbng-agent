@@ -1,0 +1,440 @@
+<!--
+# __________________________________________________
+#
+# Cloud Native BNG / Cisco Subscriber Edge
+# Control Plane Deployment Agent
+#
+# Author: Gurpreet Dhaliwal, TME MiG
+# __________________________________________________
+-->
+
+<config xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+  <idmgr xmlns="http://cisco.com/cisco-idmgr">
+    <id-event-logging>
+      <enable/>
+    </id-event-logging>
+  </idmgr>
+
+  <cdl xmlns="http://cisco.com/cisco-smi-cdl">
+    <system-id>{{cnbng_cp.step2.site_id}}</system-id>
+    <enable-geo-replication>true</enable-geo-replication>
+    <remote-site>
+      <system-id>{{cnbng_cp.step2.remote_site_id}}</system-id>
+      <db-endpoint>
+        <host>{{cnbng_cp.step2.cdl_remote_vip1}}</host>
+        <port>{{cnbng_cp.step2.cdl_db_port}}</port>
+      </db-endpoint>
+      <kafka-server>
+        <host>{{cnbng_cp.step2.cdl_remote_vip2}}</host>
+        <port>{{cnbng_cp.step2.cdl_kafka_port1}}</port>
+      </kafka-server>
+      <kafka-server>
+        <host>{{cnbng_cp.step2.cdl_remote_vip3}}</host>
+        <port>{{cnbng_cp.step2.cdl_kafka_port2}}</port>
+      </kafka-server>
+    </remote-site>
+    <label-config>
+      <name>session</name>
+      <endpoint>
+        <key>smi.cisco.com/sess-type</key>
+        <value>cdl-node</value>
+      </endpoint>
+      <slot>
+{% for map_id in range(1, 7) %}
+        <map>
+          <map-id>{{map_id}}</map-id>
+          <key>smi.cisco.com/sess-type</key>
+          <value>cdl-node</value>
+        </map>
+{% endfor %}
+      </slot>
+      <index>
+{% for map_id in range(1, 3) %}
+        <map>
+          <map-id>{{map_id}}</map-id>
+          <key>smi.cisco.com/sess-type</key>
+          <value>cdl-node</value>
+        </map>
+{% endfor %}
+      </index>
+    </label-config>
+    <logging>
+      <default-log-level>error</default-log-level>
+    </logging>
+    <datastore>
+      <name>session</name>
+      <label-config>session</label-config>
+      <geo-remote-site>{{cnbng_cp.step2.remote_site_id}}</geo-remote-site>
+      <slice-names>1</slice-names>
+      <slice-names>2</slice-names>
+      <features>
+        <instance-aware-notification>
+          <enable>true</enable>
+          <system-id>
+            <id>1</id>
+            <slice-names>1</slice-names>
+          </system-id>
+          <system-id>
+            <id>2</id>
+            <slice-names>2</slice-names>
+          </system-id>
+        </instance-aware-notification>
+      </features>
+      <overload-protection>
+        <disable>true</disable>
+      </overload-protection>
+      <endpoint>
+        <replica>2</replica>
+        <copies-per-node>3</copies-per-node>
+        <settings>
+          <slot-timeout-ms>750</slot-timeout-ms>
+        </settings>
+        <external-ip>{{cnbng_cp.step2.cdl_local_vip1}}</external-ip>
+        <external-port>{{cnbng_cp.step2.cdl_db_port}}</external-port>
+      </endpoint>
+      <index>
+        <replica>2</replica>
+        <map>2</map>
+      </index>
+      <slot>
+        <replica>2</replica>
+        <map>6</map>
+        <notification>
+          <limit>2000</limit>
+          <max-concurrent-bulk-notifications>20</max-concurrent-bulk-notifications>
+          <include-conflict-data>true</include-conflict-data>
+        </notification>
+      </slot>
+    </datastore>
+    <kafka>
+      <replica>2</replica>
+      <external-ip>
+        <ip>{{cnbng_cp.step2.cdl_local_vip2}}</ip>
+        <port>{{cnbng_cp.step2.cdl_kafka_port1}}</port>
+      </external-ip>
+      <external-ip>
+        <ip>{{cnbng_cp.step2.cdl_local_vip3}}</ip>
+        <port>{{cnbng_cp.step2.cdl_kafka_port2}}</port>
+      </external-ip>
+      <label-config>
+        <key>smi.cisco.com/sess-type</key>
+        <value>cdl-node</value>
+      </label-config>
+    </kafka>
+  </cdl>
+
+  <etcd xmlns="http://cisco.com/cisco-smi-etcd">
+    <backup>
+      <disable>false</disable>
+    </backup>
+  </etcd>
+
+  <system xmlns="http://tail-f.com/cisco-mobile-ops">
+    <mode>running</mode>
+  </system>
+
+{% set instances = [
+  {
+    'id': 1,
+    'geo_internal_vip': cnbng_cp.step2.inttcp_site1_vip1,
+    'geo_external_vip': cnbng_cp.step2.inttcp_site1_vip2,
+    'n4_vip': cnbng_cp.step2.n4_vip1,
+    'intudp_vip': cnbng_cp.step2.intudp_site1_vip1,
+    'radius_sla': 180000
+  },
+  {
+    'id': 2,
+    'geo_internal_vip': cnbng_cp.step2.inttcp_site2_vip1,
+    'geo_external_vip': cnbng_cp.step2.inttcp_site2_vip2,
+    'n4_vip': cnbng_cp.step2.n4_vip2,
+    'intudp_vip': cnbng_cp.step2.intudp_site2_vip1,
+    'radius_sla': 140000
+  }
+] %}
+  <instance xmlns="http://tail-f.com/cisco-mobile-infra">
+{% for item in instances %}
+    <instance-id>
+      <id>{{item.id}}</id>
+      <endpoint>
+        <ep>
+          <eptype>geo</eptype>
+          <replicas>1</replicas>
+          <nodes>2</nodes>
+          <interface>
+            <interface-type>geo-internal</interface-type>
+            <vip>
+              <vip-ip>{{item.geo_internal_vip}}</vip-ip>
+              <vip-port>{{cnbng_cp.step2.inttcp_geo_internal_port}}</vip-port>
+            </vip>
+          </interface>
+          <interface>
+            <interface-type>geo-external</interface-type>
+            <vip>
+              <vip-ip>{{item.geo_external_vip}}</vip-ip>
+              <vip-port>{{cnbng_cp.step2.inttcp_geo_external_port}}</vip-port>
+            </vip>
+          </interface>
+        </ep>
+        <ep>
+          <eptype>bgpspeaker</eptype>
+          <replicas>1</replicas>
+          <nodes>2</nodes>
+        </ep>
+        <ep>
+          <eptype xmlns:cnbng-cp="http://cisco.com/ns/yang/cnbng-cp">cnbng-cp:sm</eptype>
+          <replicas>8</replicas>
+          <nodes>2</nodes>
+        </ep>
+        <ep>
+          <eptype xmlns:cnbng-cp="http://cisco.com/ns/yang/cnbng-cp">cnbng-cp:nodemgr</eptype>
+          <replicas>1</replicas>
+          <nodes>2</nodes>
+        </ep>
+        <ep>
+          <eptype xmlns:cnbng-cp="http://cisco.com/ns/yang/cnbng-cp">cnbng-cp:n4-protocol</eptype>
+          <replicas>1</replicas>
+          <nodes>2</nodes>
+          <retransmission xmlns="http://cisco.com/ns/yang/cnbng-cp">
+            <timeout>0</timeout>
+            <max-retry>1</max-retry>
+          </retransmission>
+        </ep>
+        <ep>
+          <eptype xmlns:cnbng-cp="http://cisco.com/ns/yang/cnbng-cp">cnbng-cp:dhcp</eptype>
+          <replicas>6</replicas>
+          <nodes>2</nodes>
+        </ep>
+        <ep>
+          <eptype xmlns:cnbng-cp="http://cisco.com/ns/yang/cnbng-cp">cnbng-cp:radius</eptype>
+          <replicas>3</replicas>
+          <nodes>2</nodes>
+          <interface>
+            <interface-type xmlns:cnbng-cp="http://cisco.com/ns/yang/cnbng-cp">cnbng-cp:coa-nas</interface-type>
+            <sla>
+              <response>{{item.radius_sla}}</response>
+            </sla>
+            <vip>
+              <vip-ip>{{item.n4_vip}}</vip-ip>
+              <vip-port>{{cnbng_cp.step2.radius_port}}</vip-port>
+              <vip-interface>{{cnbng_cp.step2.n4_interface}}</vip-interface>
+            </vip>
+          </interface>
+        </ep>
+        <ep>
+          <eptype xmlns:cnbng-cp="http://cisco.com/ns/yang/cnbng-cp">cnbng-cp:udp-proxy</eptype>
+          <replicas>1</replicas>
+          <nodes>2</nodes>
+          <vip>
+            <vip-ip>{{item.n4_vip}}</vip-ip>
+            <vip-port>{{cnbng_cp.step2.radius_port}}</vip-port>
+            <vip-interface>{{cnbng_cp.step2.n4_interface}}</vip-interface>
+          </vip>
+          <interface>
+            <interface-type xmlns:cnbng-cp="http://cisco.com/ns/yang/cnbng-cp">cnbng-cp:n4</interface-type>
+            <sla>
+              <response>180000</response>
+            </sla>
+            <vip>
+              <vip-ip>{{item.n4_vip}}</vip-ip>
+              <vip-interface>{{cnbng_cp.step2.n4_interface}}</vip-interface>
+            </vip>
+          </interface>
+          <interface>
+            <interface-type xmlns:cnbng-cp="http://cisco.com/ns/yang/cnbng-cp">cnbng-cp:gtpu</interface-type>
+            <sla>
+              <response>180000</response>
+            </sla>
+          </interface>
+          <internal-vip xmlns="http://cisco.com/ns/yang/cnbng-cp">{{item.intudp_vip}}</internal-vip>
+        </ep>
+      </endpoint>
+    </instance-id>
+{% endfor %}
+  </instance>
+
+  <logging xmlns="http://tail-f.com/cisco-mobile-infra">
+    <level>
+      <application>error</application>
+      <transaction>error</transaction>
+      <tracing>error</tracing>
+    </level>
+    <logger>
+      <name>infra.dpd.core</name>
+      <level>
+        <application>off</application>
+        <transaction>off</transaction>
+      </level>
+    </logger>
+  </logging>
+
+{% if cnbng_cp.step2.router_asn and cnbng_cp.step2.router_interfaces %}
+  <router xmlns="http://tail-f.com/cisco-mobile-infra">
+    <bgplist>
+      <bgp>{{cnbng_cp.step2.router_asn}}</bgp>
+      <learnDefaultRoute>false</learnDefaultRoute>
+      <prepend>
+        <as-path>{{cnbng_cp.step2.bgp_aspath_prepend | string | lower}}</as-path>
+      </prepend>
+{% for router_interface in cnbng_cp.step2.router_interfaces %}
+      <interfaceList>
+        <interface>{{router_interface.interface}}</interface>
+        <bondingInterfaces>
+          <bondingInterface>{{router_interface.bonding_interface}}</bondingInterface>
+        </bondingInterfaces>
+{% for neighbor in router_interface.neighbors %}
+        <neighbors>
+          <neighbor>{{neighbor.neighbor}}</neighbor>
+          <remote-as>{{neighbor.remote_as}}</remote-as>
+          <fail-over>bfd</fail-over>
+        </neighbors>
+{% endfor %}
+      </interfaceList>
+{% endfor %}
+      <bfd>
+        <interval>{{cnbng_cp.step2.bgp_bfd_interval}}</interval>
+        <min_rx>{{cnbng_cp.step2.bgp_bfd_min_rx}}</min_rx>
+        <multiplier>{{cnbng_cp.step2.bgp_bfd_multiplier}}</multiplier>
+      </bfd>
+{% for policy in cnbng_cp.step2.n4_policies %}
+      <policyName>
+        <policy-name>{{policy.name}}</policy-name>
+        <ip-prefix>{{policy.prefix}}</ip-prefix>
+        <mask-range>{{policy.mask_range}}</mask-range>
+        <interface>{{cnbng_cp.step2.n4_interface}}</interface>
+        <gateWay>{{cnbng_cp.step2.n4_gateway}}</gateWay>
+      </policyName>
+{% endfor %}
+    </bgplist>
+  </router>
+{% endif %}
+
+  <deployment xmlns="http://tail-f.com/cisco-mobile-infra">
+    <app-name>BNG</app-name>
+    <cluster-name>Local</cluster-name>
+    <dc-name>DC</dc-name>
+  </deployment>
+
+  <k8 xmlns="http://tail-f.com/cisco-mobile-infra">
+    <label>
+      <pod-group-config>
+        <pod-group>protocol-layer</pod-group>
+        <key>smi.cisco.com/proto-type</key>
+        <value>protocol</value>
+      </pod-group-config>
+      <pod-group-config>
+        <pod-group>protocol-layer</pod-group>
+        <key>smi.cisco.com/protocol</key>
+        <value>protocol</value>
+      </pod-group-config>
+      <pod-group-config>
+        <pod-group>service-layer</pod-group>
+        <key>smi.cisco.com/svc-type</key>
+        <value>service</value>
+      </pod-group-config>
+      <pod-group-config>
+        <pod-group>cdl-layer</pod-group>
+        <key>smi.cisco.com/sess-type</key>
+        <value>cdl-node</value>
+      </pod-group-config>
+      <pod-group-config>
+        <pod-group>oam-layer</pod-group>
+        <key>smi.cisco.com/node-type</key>
+        <value>oam</value>
+      </pod-group-config>
+    </label>
+    <bng xmlns="http://cisco.com/ns/yang/cnbng-cp">
+      <etcd-endpoint>etcd:2379</etcd-endpoint>
+      <datastore-endpoint>datastore-ep-session:8882</datastore-endpoint>
+      <tracing>
+        <enable/>
+        <enable-trace-percent>30</enable-trace-percent>
+        <append-messages>true</append-messages>
+        <endpoint>jaeger-collector:9411</endpoint>
+      </tracing>
+    </bng>
+  </k8>
+
+  <profile xmlns="http://cisco.com/ns/yang/cnbng-cp">
+    <radius>
+      <attribute>
+        <instance>
+          <instance-id>1</instance-id>
+          <nas-identifier>{{cnbng_cp.step2.radius_nas_identifier1}}</nas-identifier>
+          <nas-ip>{{cnbng_cp.step2.n4_vip1}}</nas-ip>
+        </instance>
+        <instance>
+          <instance-id>2</instance-id>
+          <nas-identifier>{{cnbng_cp.step2.radius_nas_identifier2}}</nas-identifier>
+          <nas-ip>{{cnbng_cp.step2.n4_vip2}}</nas-ip>
+        </instance>
+      </attribute>
+      <accounting>
+        <attribute>
+          <instance>
+            <instance-id>1</instance-id>
+            <nas-identifier>{{cnbng_cp.step2.radius_accounting_nas_identifier1}}</nas-identifier>
+            <nas-ip>{{cnbng_cp.step2.n4_vip1}}</nas-ip>
+          </instance>
+          <instance>
+            <instance-id>2</instance-id>
+            <nas-identifier>{{cnbng_cp.step2.radius_accounting_nas_identifier2}}</nas-identifier>
+            <nas-ip>{{cnbng_cp.step2.n4_vip2}}</nas-ip>
+          </instance>
+        </attribute>
+      </accounting>
+    </radius>
+  </profile>
+
+  <resource xmlns="http://tail-f.com/cisco-mobile-infra">
+    <pod>
+      <podtype>georeplication-pod</podtype>
+    </pod>
+    <pod>
+      <podtype>cache-pod</podtype>
+    </pod>
+  </resource>
+
+  <geomonitor xmlns="http://tail-f.com/cisco-mobile-infra">
+    <podmonitor>
+      <pods>
+        <name>bfdmgr</name>
+        <retryCount>5</retryCount>
+        <retryInterval>900</retryInterval>
+        <retryFailOverInterval>500</retryFailOverInterval>
+        <failedReplicaPercent>60</failedReplicaPercent>
+      </pods>
+{% for pod in ['bgpspeaker-pod', 'bng-dhcp', 'bng-l2tp-tunnel', 'bng-n4-protocol', 'bng-nodemgr', 'bng-pppoe', 'bng-sm', 'cache-pod', 'udp-proxy'] %}
+      <pods>
+        <name>{{pod}}</name>
+        <retryCount>2</retryCount>
+        <retryInterval>900</retryInterval>
+        <retryFailOverInterval>500</retryFailOverInterval>
+        <failedReplicaPercent>{% if pod in ['bng-dhcp', 'bng-pppoe', 'bng-sm'] %}50{% else %}60{% endif %}</failedReplicaPercent>
+      </pods>
+{% endfor %}
+    </podmonitor>
+    <trafficMonitor>
+      <thresholdCount>1</thresholdCount>
+      <thresholdInterval>10000</thresholdInterval>
+    </trafficMonitor>
+  </geomonitor>
+
+  <instances xmlns="http://tail-f.com/cisco-mobile-infra">
+    <instance>
+      <instance-id>1</instance-id>
+      <system-id>DC</system-id>
+      <cluster-id>Local</cluster-id>
+      <slice-name>1</slice-name>
+    </instance>
+    <instance>
+      <instance-id>2</instance-id>
+      <system-id>DC</system-id>
+      <cluster-id>Local</cluster-id>
+      <slice-name>2</slice-name>
+    </instance>
+  </instances>
+
+  <local-instance xmlns="http://tail-f.com/cisco-mobile-infra">
+    <instance>{{cnbng_cp.step2.site_id}}</instance>
+  </local-instance>
+</config>

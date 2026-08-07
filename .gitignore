@@ -1,0 +1,9 @@
+runs/
+config/
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+excel-inputs/.DS_Store
+excel-inputs/~$*.xlsx
+excel-inputs/*.inspect.ndjson
